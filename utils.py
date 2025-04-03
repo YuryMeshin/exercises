@@ -1,4 +1,4 @@
-from typing import Optional, Union, Self
+from typing import Optional, Union, Self, Callable
 from numbers import Number
 from itertools import product
 
@@ -7,6 +7,7 @@ class DiscreteRandomVariable():
 
     def __init__(self, domain: list[float], precision: int=0, \
                  weights: Optional[list[float]]=None, name: str='X'):
+        assert isinstance(name, str), f'Only string names are accepted'
         self.name = name
         self.precision = precision
         assert len(domain) == len(set([round(x, precision) for x in domain])), \
@@ -19,6 +20,10 @@ class DiscreteRandomVariable():
             self.probability = [w / w_sum for w in weights]
         else:
             self.probability = [1 / len(domain) for _ in domain]
+    
+    def rename(self, name: str):
+        assert isinstance(name, str), f'Only string names are accepted'
+        self.name = name
     
     def __repr__(self, precision: int=2) -> str:
         header = f'Discrete Random Variable {self.name}:\n'
@@ -35,8 +40,10 @@ class DiscreteRandomVariable():
                 chunks.append(template.format(self.domain[i], self.probability[i]))
         return ''.join(chunks)
     
-    def copy(self) -> Self:
-        return type(self)(self.domain.copy(), self.precision, self.probability.copy(), self.name)
+    def copy(self, name: Optional[str]=None) -> Self:
+        assert isinstance(name, Optional[str]), \
+            f'Unsupported name type {typ(name)} given, only string or NoneType are supported'
+        return type(self)(self.domain.copy(), self.precision, self.probability.copy(), name if name else self.name)
     
     def __eq__(self, other: Union[Self, Number]) -> bool:
         if isinstance(other, type(self)):
@@ -124,3 +131,15 @@ class DiscreteRandomVariable():
                 new_weight = self.probability[i] * other.probability[j]
                 values[new_val] = values.get(new_val, 0) + new_weight
             return type(self)(list(values.keys()), precision, values.values(), '/'.join([self.name, other.name]))
+    
+    def expectation(self, func: Optional[Callable]=lambda x: x, precision: Optional[int]=None) -> float:
+        result = sum([func(self.domain[i]) * self.probability[i] for i in range(len(self.domain))])
+        if precision:
+            return round(result, precision)
+        else:
+            return result
+    
+    def dispersion(self, precision: Optional[int]=None) -> float:
+        _exp = self.expectation()
+        func = lambda x: (x - _exp) ** 2
+        return self.expectation(func, precision)
