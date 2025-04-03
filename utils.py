@@ -36,7 +36,7 @@ class DiscreteRandomVariable():
         return ''.join(chunks)
     
     def copy(self) -> Self:
-        return type(self)(self.domain, self.precision, self.probability, self.name)
+        return type(self)(self.domain.copy(), self.precision, self.probability.copy(), self.name)
     
     def __eq__(self, other: Union[Self, Number]) -> bool:
         if isinstance(other, type(self)):
