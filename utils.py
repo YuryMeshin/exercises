@@ -42,7 +42,7 @@ class DiscreteRandomVariable():
     
     def copy(self, name: Optional[str]=None) -> Self:
         assert isinstance(name, Optional[str]), \
-            f'Unsupported name type {typ(name)} given, only string or NoneType are supported'
+            f'Unsupported name type {type(name)} given, only string or NoneType are supported'
         return type(self)(self.domain.copy(), self.precision, self.probability.copy(), name if name else self.name)
     
     def __eq__(self, other: Union[Self, Number]) -> bool:
