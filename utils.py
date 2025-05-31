@@ -2,6 +2,7 @@ import numpy as np
 from typing import Optional, Union, Self, Callable, Iterable
 from numbers import Number
 from itertools import product
+import random
 
 
 class DiscreteRandomVariable():
@@ -111,6 +112,12 @@ class DiscreteRandomVariable():
             return DiscreteRandomVariable(list(values.keys()), list(values.values()), \
                                           '*'.join([self.name, other.name]))
     
+    def transform(self, func: Optional[Callable]=lambda x: x, precision: Optional[int]=None) -> 'DiscreteRandomVariable':
+        values = {}
+        for i, d in enumerate(self.domain):
+            values[func(d)] = values.get(func(d), 0) + self.probability[i]
+        return DiscreteRandomVariable(list(values.keys()), list(values.values()), self.name)
+        
     def expectation(self, func: Optional[Callable]=lambda x: x, precision: Optional[int]=None) -> float:
         result = sum([func(self.domain[i]) * self.probability[i] for i in range(len(self.domain))])
         if precision:
@@ -122,3 +129,11 @@ class DiscreteRandomVariable():
         _exp = self.expectation()
         func = lambda x: (x - _exp) ** 2
         return self.expectation(func, precision)
+
+    def pick(self) -> float:
+        threshold = random.uniform(0, 1)
+        i, w = 0, self.probability[0]
+        while (threshold > w):
+            i += 1
+            w += self.probability[i]
+        return self.domain[i]
