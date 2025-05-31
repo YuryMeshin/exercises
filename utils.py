@@ -1,33 +1,34 @@
-from typing import Optional, Union, Self, Callable
+import numpy as np
+from typing import Optional, Union, Self, Callable, Iterable
 from numbers import Number
 from itertools import product
 
 
 class DiscreteRandomVariable():
 
-    def __init__(self, domain: list[float], precision: int=0, \
-                 weights: Optional[list[float]]=None, name: str='X'):
+    def __init__(self, domain: Iterable[Number], weights: Optional[Iterable[Number]]=None, name: str='X'):
         assert isinstance(name, str), f'Only string names are accepted'
-        self.name = name
-        self.precision = precision
-        assert len(domain) == len(set([round(x, precision) for x in domain])), \
-            'Given domain values must be unique'
-        self.domain = [round(x, self.precision) for x in sorted(domain)]
-        if weights:
-            assert len(weights) == len(self.domain), \
+        if weights is None:
+            data = [[d, 1 / len(domain)] for i, d in enumerate(domain)]
+        else:
+            assert len(weights) == len(domain), \
                 f"Given domain size {len(domain)} doesn't match weights size {len(weights)}"
             assert (w_sum := sum(weights)) > 0, f"Total weight of weights given must be positive"
-            self.probability = [w / w_sum for w in weights]
-        else:
-            self.probability = [1 / len(domain) for _ in domain]
+            weights = np.array(weights, dtype=float)
+            weights /= w_sum
+            data = [[d, weights[i]] for i, d in enumerate(domain)]
+        data.sort()
+        self.name = name
+        self.domain = np.array([d[0] for d in data])
+        self.probability = np.array([d[1] for d in data])
     
     def rename(self, name: str):
         assert isinstance(name, str), f'Only string names are accepted'
         self.name = name
     
-    def __repr__(self, precision: int=2) -> str:
+    def __repr__(self) -> str:
         header = f'Discrete Random Variable {self.name}:\n'
-        template = f'\tP({self.name}=' + '{:.' + str(self.precision) + 'f})={:.' + str(precision) + 'f}\n'
+        template = f'\tP({self.name}=' + '{:.5f})={:.5f}\n'
         chunks = [header]
         if len(self.domain) > 5:
             for i in range(2):
@@ -40,17 +41,23 @@ class DiscreteRandomVariable():
                 chunks.append(template.format(self.domain[i], self.probability[i]))
         return ''.join(chunks)
     
-    def copy(self, name: Optional[str]=None) -> Self:
+    def copy(self, name: Optional[str]=None) -> 'DiscreteRandomVariable':
         assert isinstance(name, Optional[str]), \
             f'Unsupported name type {type(name)} given, only string or NoneType are supported'
-        return type(self)(self.domain.copy(), self.precision, self.probability.copy(), name if name else self.name)
+        return type(self)(self.domain.copy(), self.probability.copy(), name if name else self.name)
     
     def __eq__(self, other: Union[Self, Number]) -> bool:
         if isinstance(other, type(self)):
-            return (self.domain == other.domain) & (self.probability == other.probability)
+            if self.domain.shape[0] != other.domain.shape[0]:
+                return False
+            if max(abs(self.domain - other.domain)) > 1e-10:
+                return False
+            if max(abs(self.probability - other.probability)) > 1e-10:
+                return False
+            return True
         elif isinstance(other, Number):
             if len(self.domain) == 1:
-                return self.domain[0] == other
+                return abs(self.domain[0] - other) < 1e-10
             else:
                 return False
         return NotImplemented
@@ -59,78 +66,50 @@ class DiscreteRandomVariable():
         result = self.__eq__(other)
         return NotImplemented if result is NotImplemented else not result
 
-    def __add__(self, other: Union[Self, Number]) -> Self:
+    def __add__(self, other: Union[Self, Number]) -> 'DiscreteRandomVariable':
         if isinstance(other, Number):
-            return type(self)([d + other for d in self.domain], self.precision, self.probability, self.name)
+            return DiscreteRandomVariable(self.domain + other, self.probability, \
+                                          f'{self.name}+{other:.5f}')
         elif isinstance(other, type(self)):
-            n = len(self.domain)
-            m = len(other.domain)
-            precision = max(self.precision, other.precision)
+            n, m = len(self.domain), len(other.domain)
             values = {}
             for i, j in product(range(n), range(m)):
-                new_val = round(self.domain[i] + other.domain[j], precision)
+                new_val = round(self.domain[i] + other.domain[j], 5)
                 new_weight = self.probability[i] * other.probability[j]
                 values[new_val] = values.get(new_val, 0) + new_weight
-            return type(self)(list(values.keys()), precision, values.values(), '+'.join([self.name, other.name]))
+            return DiscreteRandomVariable(list(values.keys()), list(values.values()), \
+                                          '+'.join([self.name, other.name]))
     
-    def __sub__(self, other: Union[Self, Number]) -> Self:
+    def __sub__(self, other: Union[Self, Number]) -> 'DiscreteRandomVariable':
         if isinstance(other, Number):
-            return type(self)([d - other for d in self.domain], self.precision, self.probability, self.name)
+            return DiscreteRandomVariable(self.domain - other, self.probability, \
+                                          f'{self.name}-{other:.5f}')
         elif isinstance(other, type(self)):
-            n = len(self.domain)
-            m = len(other.domain)
-            precision = max(self.precision, other.precision)
+            n, m = len(self.domain), len(other.domain)
             values = {}
             for i, j in product(range(n), range(m)):
-                new_val = round(self.domain[i] - other.domain[j], precision)
+                new_val = round(self.domain[i] - other.domain[j], 5)
                 new_weight = self.probability[i] * other.probability[j]
                 values[new_val] = values.get(new_val, 0) + new_weight
-            return type(self)(list(values.keys()), precision, values.values(), '-'.join([self.name, other.name]))
+            return DiscreteRandomVariable(list(values.keys()), list(values.values()), \
+                                          '-'.join([self.name, other.name]))
     
-    def __mul__(self, other: Union[Self, Number]) -> Self:
+    def __mul__(self, other: Union[Self, Number]) -> 'DiscreteRandomVariable':
         if isinstance(other, Number):
-            return type(self)([d * other for d in self.domain], self.precision, self.probability, self.name)
+            if (abs(other) < 1e-10):
+                return DiscreteRandomVariable([0], [1], f'{self.name}*0')
+            else:
+                return DiscreteRandomVariable(self.domain * other, self.probability, \
+                                              f'{self.name}*{other:.5f}')
         elif isinstance(other, type(self)):
-            n = len(self.domain)
-            m = len(other.domain)
-            precision = max(self.precision, other.precision)
+            n, m = len(self.domain), len(other.domain)
             values = {}
             for i, j in product(range(n), range(m)):
-                new_val = round(self.domain[i] * other.domain[j], precision)
+                new_val = round(self.domain[i] * other.domain[j], 5)
                 new_weight = self.probability[i] * other.probability[j]
                 values[new_val] = values.get(new_val, 0) + new_weight
-            return type(self)(list(values.keys()), precision, values.values(), '*'.join([self.name, other.name]))
-    
-    def __pow__(self, deg: int) -> Self:
-        assert isinstance(deg, int), 'Only non negative integer power is supported'
-        assert deg >= 0, 'Only non negative integer power is supported'
-        if deg == 0:
-            return 1
-        if deg == 1:
-            return self.copy()
-        values = {}
-        for i in range(len(self.domain)):
-            new_val = self.domain[i] ** deg
-            values[new_val] = values.get(new_val, 0) + self.probability[i]
-        return type(self)(list(values.keys()), self.precision, values.values(), f'{self.name}^{deg}')
-
-    def __truediv__(self, other: Union[Self, Number]) -> Self:
-        if isinstance(other, Number):
-            if other == 0:
-                raise ZeroDivisionError('Given value of the divisor is equal to 0')
-            return type(self)([d / other for d in self.domain], self.precision, self.probability, self.name)
-        elif isinstance(other, type(self)):
-            if 0 in other.domain:
-                raise ZeroDivisionError(f'Given random variable {other.name} has value of 0 in its domain')
-            n = len(self.domain)
-            m = len(other.domain)
-            precision = 10
-            values = {}
-            for i, j in product(range(n), range(m)):
-                new_val = round(self.domain[i] / other.domain[j], precision)
-                new_weight = self.probability[i] * other.probability[j]
-                values[new_val] = values.get(new_val, 0) + new_weight
-            return type(self)(list(values.keys()), precision, values.values(), '/'.join([self.name, other.name]))
+            return DiscreteRandomVariable(list(values.keys()), list(values.values()), \
+                                          '*'.join([self.name, other.name]))
     
     def expectation(self, func: Optional[Callable]=lambda x: x, precision: Optional[int]=None) -> float:
         result = sum([func(self.domain[i]) * self.probability[i] for i in range(len(self.domain))])
